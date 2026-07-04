@@ -19,29 +19,63 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _controller = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final currentUser = FirebaseAuth.instance.currentUser!;
+  final TextEditingController _controller =
+      TextEditingController();
+
+  final ScrollController _scrollController =
+      ScrollController();
+
+  final currentUser =
+      FirebaseAuth.instance.currentUser!;
 
   bool selectionMode = false;
   Set<String> selectedMessages = {};
 
+  // Reply feature
+  String? replyMessage;
+  String? replySender;
+  String? replyMessageId;
+
   String get chatId {
-    List<String> ids = [currentUser.uid, widget.receiverId];
+    List<String> ids = [
+      currentUser.uid,
+      widget.receiverId,
+    ];
+
     ids.sort();
     return ids.join("_");
   }
 
-  // আপডেট করা sendMessage ফাংশন
+  void startReply(
+    String messageId,
+    String message,
+    String sender,
+  ) {
+    setState(() {
+      replyMessageId = messageId;
+      replyMessage = message;
+      replySender = sender;
+    });
+  }
+
+  void cancelReply() {
+    setState(() {
+      replyMessage = null;
+      replySender = null;
+      replyMessageId = null;
+    });
+  }
+
   Future<void> sendMessage() async {
     if (_controller.text.trim().isEmpty) {
       return;
     }
 
-    String messageText = _controller.text.trim();
+    String messageText =
+        _controller.text.trim();
+
     _controller.clear();
 
-    // ১. মেসেজ ডাটাবেসে পাঠানো হচ্ছে
     await FirebaseFirestore.instance
         .collection('chats')
         .doc(chatId)
@@ -49,48 +83,61 @@ class _ChatScreenState extends State<ChatScreen> {
         .add({
       'text': messageText,
       'senderId': currentUser.uid,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp':
+          FieldValue.serverTimestamp(),
       'delivered': false,
       'seen': false,
+      'replyMessage': replyMessage,
+      'replySender': replySender,
+      'replyMessageId': replyMessageId,
     });
 
-    // ২. রিসিভারের কন্ট্যাক্ট লিস্টে অটোমেটিক সেন্ডারকে অ্যাড করা (যদি আগে থেকে না থাকে)
-    final receiverContactRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.receiverId)
-        .collection('contacts')
-        .doc(currentUser.uid);
+    cancelReply();
 
-    final doc = await receiverContactRef.get();
+    final receiverContactRef =
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.receiverId)
+            .collection('contacts')
+            .doc(currentUser.uid);
+
+    final doc =
+        await receiverContactRef.get();
 
     if (!doc.exists) {
-      // সেন্ডারের প্রোফাইল ছবি ডাটাবেস থেকে নিয়ে আসা হচ্ছে
-      final senderDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-          
+      final senderDoc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .get();
+
       String? senderPhoto;
+
       if (senderDoc.exists) {
-        senderPhoto = senderDoc.data()?['photoUrl'];
+        senderPhoto =
+            senderDoc.data()?['photoUrl'];
       }
 
-      // রিসিভারের কন্ট্যাক্ট লিস্টে সেন্ডারকে অ্যাড করে দেওয়া হলো
       await receiverContactRef.set({
         'uid': currentUser.uid,
-        'email': currentUser.email ?? 'Unknown',
-        'savedName': currentUser.email, // রিসিভারের কাছে বাই ডিফল্ট ইমেইলটাই নাম হিসেবে দেখাবে
+        'email':
+            currentUser.email ??
+                'Unknown',
+        'savedName':
+            currentUser.email,
         'photoUrl': senderPhoto,
-        'addedAt': FieldValue.serverTimestamp(),
+        'addedAt':
+            FieldValue.serverTimestamp(),
       });
     }
   }
-
+  
   void scrollToBottom() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
+        duration:
+            const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     }
@@ -108,29 +155,45 @@ class _ChatScreenState extends State<ChatScreen> {
     List<DocumentSnapshot> docsToDelete = [];
 
     for (String id in selectedMessages) {
-      final doc = await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .doc(id)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('chats')
+              .doc(chatId)
+              .collection('messages')
+              .doc(id)
+              .get();
 
       docsToDelete.add(doc);
 
       if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        bool isMyMessage = data['senderId'] == currentUser.uid;
-        Timestamp? timestamp = data['timestamp'] as Timestamp?;
+        final data =
+            doc.data()
+                as Map<String, dynamic>;
+
+        bool isMyMessage =
+            data['senderId'] ==
+                currentUser.uid;
+
+        Timestamp? timestamp =
+            data['timestamp']
+                as Timestamp?;
 
         if (!isMyMessage) {
-          canDeleteForEveryone = false;
+          canDeleteForEveryone =
+              false;
         } else if (timestamp != null) {
-          final diff = DateTime.now().difference(timestamp.toDate());
+          final diff = DateTime.now()
+              .difference(
+            timestamp.toDate(),
+          );
+
           if (diff.inMinutes >= 10) {
-            canDeleteForEveryone = false;
+            canDeleteForEveryone =
+                false;
           }
         } else {
-          canDeleteForEveryone = false;
+          canDeleteForEveryone =
+              false;
         }
       }
     }
@@ -142,39 +205,79 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (context) {
         return SafeArea(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize:
+                MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text("Delete for Me"),
+                leading:
+                    const Icon(
+                  Icons.delete_outline,
+                ),
+                title:
+                    const Text(
+                  "Delete for Me",
+                ),
                 onTap: () async {
-                  Navigator.pop(context);
-                  for (var doc in docsToDelete) {
-                    await doc.reference.update({
-                      'deletedFor': FieldValue.arrayUnion([currentUser.uid]),
+                  Navigator.pop(
+                    context,
+                  );
+
+                  for (var doc
+                      in docsToDelete) {
+                    await doc.reference
+                        .update({
+                      'deletedFor':
+                          FieldValue
+                              .arrayUnion(
+                        [
+                          currentUser.uid,
+                        ],
+                      ),
                     });
                   }
+
                   setState(() {
-                    selectionMode = false;
-                    selectedMessages.clear();
+                    selectionMode =
+                        false;
+                    selectedMessages
+                        .clear();
                   });
                 },
               ),
               if (canDeleteForEveryone)
                 ListTile(
-                  leading: const Icon(Icons.delete, color: Colors.red),
-                  title: const Text("Delete for Everyone"),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    for (var doc in docsToDelete) {
-                      await doc.reference.update({
-                        'deleted': true,
-                        'text': 'This message was deleted',
+                  leading:
+                      const Icon(
+                    Icons.delete,
+                    color:
+                        Colors.red,
+                  ),
+                  title:
+                      const Text(
+                    "Delete for Everyone",
+                  ),
+                  onTap:
+                      () async {
+                    Navigator.pop(
+                      context,
+                    );
+
+                    for (var doc
+                        in docsToDelete) {
+                      await doc.reference
+                          .update({
+                        'deleted':
+                            true,
+                        'text':
+                            'This message was deleted',
                       });
                     }
+
                     setState(() {
-                      selectionMode = false;
-                      selectedMessages.clear();
+                      selectionMode =
+                          false;
+                      selectedMessages
+                          .clear();
                     });
                   },
                 ),
@@ -186,62 +289,162 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget messageBubble(
-    String text,
+    Map<String, dynamic> message,
     bool myMessage,
-    Timestamp? timestamp,
-    bool delivered,
-    bool seen,
   ) {
     String time = '';
 
+    final Timestamp? timestamp =
+        message['timestamp']
+            as Timestamp?;
+
     if (timestamp != null) {
-      time = DateFormat('hh:mm a').format(timestamp.toDate());
+      time = DateFormat(
+        'hh:mm a',
+      ).format(
+        timestamp.toDate(),
+      );
     }
 
+    final bool delivered =
+        message['delivered'] ??
+            false;
+
+    final bool seen =
+        message['seen'] ?? false;
+
     return Align(
-      alignment: myMessage ? Alignment.centerRight : Alignment.centerLeft,
+      alignment:
+          myMessage
+              ? Alignment
+                  .centerRight
+              : Alignment
+                  .centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.all(12),
+        margin:
+            const EdgeInsets.symmetric(
+          vertical: 5,
+        ),
+        padding:
+            const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: myMessage ? const Color(0xFFDCF8C6) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          color:
+              myMessage
+                  ? const Color(
+                      0xFFDCF8C6,
+                    )
+                  : Colors.white,
+          borderRadius:
+              BorderRadius.circular(
+            18,
+          ),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment:
+              CrossAxisAlignment.end,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
+            if (message['replyMessage'] !=
+                null)
+              Container(
+                margin:
+                    const EdgeInsets.only(
+                  bottom: 6,
+                ),
+                padding:
+                    const EdgeInsets.all(
+                  8,
+                ),
+                decoration:
+                    BoxDecoration(
+                  color:
+                      Colors.black12,
+                  borderRadius:
+                      BorderRadius.circular(
+                    8,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment
+                          .start,
+                  children: [
+                    Text(
+                      message['replySender'] ??
+                          '',
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight
+                                .bold,
+                      ),
+                    ),
+                    Text(
+                      message['replyMessage'] ??
+                          '',
+                    ),
+                  ],
+                ),
+              ),
+
             Text(
-              text,
+              message['text'] ?? '',
               style: TextStyle(
                 fontSize: 16,
-                fontStyle: text == "This message was deleted"
-                    ? FontStyle.italic
-                    : FontStyle.normal,
-                color: text == "This message was deleted"
-                    ? Colors.grey
-                    : Colors.black,
+                fontStyle:
+                    message['text'] ==
+                            "This message was deleted"
+                        ? FontStyle
+                            .italic
+                        : FontStyle
+                            .normal,
+                color:
+                    message['text'] ==
+                            "This message was deleted"
+                        ? Colors.grey
+                        : Colors.black,
               ),
             ),
-            const SizedBox(height: 4),
+
+            const SizedBox(
+              height: 4,
+            ),
+
             Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  MainAxisSize.min,
               children: [
                 Text(
                   time,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  style:
+                      const TextStyle(
+                    fontSize: 10,
+                    color:
+                        Colors.grey,
+                  ),
                 ),
                 if (myMessage)
                   Padding(
-                    padding: const EdgeInsets.only(left: 4),
+                    padding:
+                        const EdgeInsets.only(
+                      left: 4,
+                    ),
                     child: Icon(
                       seen
-                          ? Icons.done_all
+                          ? Icons
+                              .done_all
                           : delivered
-                              ? Icons.done_all
+                              ? Icons
+                                  .done_all
                               : Icons.done,
                       size: 16,
-                      color: seen ? Colors.blue : Colors.grey,
+                      color:
+                          seen
+                              ? Colors
+                                  .blue
+                              : Colors
+                                  .grey,
                     ),
                   ),
               ],
@@ -268,7 +471,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   });
                 },
               ),
-              title: Text("${selectedMessages.length} selected"),
+              title: Text(
+                "${selectedMessages.length} selected",
+              ),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.delete),
@@ -278,119 +483,36 @@ class _ChatScreenState extends State<ChatScreen> {
             )
           : AppBar(
               backgroundColor: Colors.green,
-              titleSpacing: 0,
-              title: Row(
-                children: [
-                  CircleAvatar(
-                    child: Text(widget.receiverEmail[0].toUpperCase()),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.receiverEmail,
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                      StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(widget.receiverId)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const SizedBox();
-                          }
-
-                          final data =
-                              snapshot.data!.data() as Map<String, dynamic>?;
-
-                          if (data == null) {
-                            return const SizedBox();
-                          }
-
-                          final online = data['online'] ?? false;
-
-                          if (online) {
-                            return const Text(
-                              "online",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white70,
-                              ),
-                            );
-                          }
-
-                          final Timestamp? lastSeen = data['lastSeen'];
-                          String status = "last seen recently";
-
-                          if (lastSeen != null) {
-                            final date = lastSeen.toDate();
-                            final now = DateTime.now();
-
-                            if (date.year == now.year &&
-                                date.month == now.month &&
-                                date.day == now.day) {
-                              status =
-                                  "last seen today at ${DateFormat('hh:mm a').format(date)}";
-                            } else {
-                              status =
-                                  "last seen on ${DateFormat('dd MMM, hh:mm a').format(date)}";
-                            }
-                          }
-
-                          return Text(
-                            status,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.white70,
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              title: Text(widget.receiverEmail),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.call),
                   onPressed: () async {
-                    try {
-                      final result =
-                          await ZegoUIKitPrebuiltCallInvitationService().send(
-                        invitees: [
-                          ZegoCallUser(
-                            widget.receiverId,
-                            widget.receiverEmail,
-                          ),
-                        ],
-                        isVideoCall: false,
-                      );
-                      debugPrint("VOICE RESULT: $result");
-                    } catch (e) {
-                      debugPrint("VOICE ERROR: $e");
-                    }
+                    await ZegoUIKitPrebuiltCallInvitationService()
+                        .send(
+                      invitees: [
+                        ZegoCallUser(
+                          widget.receiverId,
+                          widget.receiverEmail,
+                        ),
+                      ],
+                      isVideoCall: false,
+                    );
                   },
                 ),
                 IconButton(
                   icon: const Icon(Icons.videocam),
                   onPressed: () async {
-                    try {
-                      final result =
-                          await ZegoUIKitPrebuiltCallInvitationService().send(
-                        invitees: [
-                          ZegoCallUser(
-                            widget.receiverId,
-                            widget.receiverEmail,
-                          ),
-                        ],
-                        isVideoCall: true,
-                      );
-                      debugPrint("VIDEO RESULT: $result");
-                    } catch (e) {
-                      debugPrint("VIDEO ERROR: $e");
-                    }
+                    await ZegoUIKitPrebuiltCallInvitationService()
+                        .send(
+                      invitees: [
+                        ZegoCallUser(
+                          widget.receiverId,
+                          widget.receiverEmail,
+                        ),
+                      ],
+                      isVideoCall: true,
+                    );
                   },
                 ),
               ],
@@ -407,82 +529,56 @@ class _ChatScreenState extends State<ChatScreen> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(
+                    child:
+                        CircularProgressIndicator(),
+                  );
                 }
 
-                final messages = snapshot.data!.docs;
-
-                for (var doc in messages) {
-                  final data = doc.data() as Map<String, dynamic>;
-
-                  if (data['senderId'] != currentUser.uid &&
-                      data['seen'] != true) {
-                    doc.reference.update({'seen': true, 'delivered': true});
-                  }
-                }
-
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  scrollToBottom();
-                });
-
-                if (messages.isEmpty) {
-                  return const Center(child: Text("Say hello 👋"));
-                }
-
+                final messages =
+                    snapshot.data!.docs;
                 return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(10),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
+                  controller:
+                      _scrollController,
+                  itemCount:
+                      messages.length,
+                  itemBuilder:
+                      (context, index) {
                     final message =
-                        messages[index].data() as Map<String, dynamic>;
+                        messages[index]
+                                .data()
+                            as Map<String,
+                                dynamic>;
 
-                    final deletedFor = List<String>.from(
-                      message['deletedFor'] ?? [],
-                    );
+                    final myMessage =
+                        message['senderId'] ==
+                            currentUser.uid;
 
-                    if (deletedFor.contains(currentUser.uid)) {
-                      return const SizedBox();
-                    }
+                    return Dismissible(
+                      key: Key(
+                        messages[index].id,
+                      ),
+                      direction:
+                          DismissDirection
+                              .startToEnd,
+                      confirmDismiss:
+                          (_) async {
+                        startReply(
+                          messages[index].id,
+                          message['text'] ??
+                              '',
+                          myMessage
+                              ? 'You'
+                              : widget
+                                  .receiverEmail,
+                        );
 
-                    final myMessage = message['senderId'] == currentUser.uid;
-
-                    return GestureDetector(
-                      onLongPress: () {
-                        if (!selectionMode) {
-                          setState(() {
-                            selectionMode = true;
-                            selectedMessages.add(messages[index].id);
-                          });
-                        }
+                        return false;
                       },
-                      onTap: () {
-                        if (selectionMode) {
-                          setState(() {
-                            if (selectedMessages
-                                .contains(messages[index].id)) {
-                              selectedMessages.remove(messages[index].id);
-                            } else {
-                              selectedMessages.add(messages[index].id);
-                            }
-
-                            if (selectedMessages.isEmpty) {
-                              selectionMode = false;
-                            }
-                          });
-                        }
-                      },
-                      child: Container(
-                        color: selectedMessages.contains(messages[index].id)
-                            ? Colors.green.withOpacity(0.30)
-                            : Colors.transparent,
-                        child: messageBubble(
-                          message['text'] ?? '',
-                          myMessage,
-                          message['timestamp'] as Timestamp?,
-                          message['delivered'] ?? false,
-                          message['seen'] ?? false,
-                        ),
+                      child:
+                          messageBubble(
+                        message,
+                        myMessage,
                       ),
                     );
                   },
@@ -490,32 +586,130 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            color: Colors.grey.shade200,
+
+          if (replyMessage != null)
+            Container(
+              width: double.infinity,
+              color:
+                  Colors.grey.shade300,
+              padding:
+                  const EdgeInsets.all(
+                      10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment
+                              .start,
+                      children: [
+                        Text(
+                          replySender ??
+                              '',
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight
+                                    .bold,
+                          ),
+                        ),
+                        Text(
+                          replyMessage ??
+                              '',
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon:
+                        const Icon(
+                      Icons.close,
+                    ),
+                    onPressed:
+                        cancelReply,
+                  ),
+                ],
+              ),
+            ),
+
+          // WhatsApp Style Message Input Box
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 8.0,
+              right: 8.0,
+              bottom: 12.0,
+              top: 4.0,
+            ),
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: InputDecoration(
-                      hintText: "Type a message",
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(25),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          spreadRadius: 1,
+                          blurRadius: 3,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
                     ),
-                    onSubmitted: (_) => sendMessage(),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.sentiment_satisfied_alt_outlined,
+                            color: Colors.grey[600],
+                          ),
+                          onPressed: () {},
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            maxLines: null,
+                            keyboardType: TextInputType.multiline,
+                            decoration: const InputDecoration(
+                              hintText: "Message",
+                              hintStyle: TextStyle(color: Colors.grey),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(
+                                vertical: 10,
+                              ),
+                            ),
+                            onSubmitted: (_) => sendMessage(),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.attach_file,
+                            color: Colors.grey[600],
+                          ),
+                          onPressed: () {},
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.camera_alt,
+                            color: Colors.grey[600],
+                          ),
+                          onPressed: () {},
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.green,
-                  child: IconButton(
-                    onPressed: sendMessage,
-                    icon: const Icon(Icons.send, color: Colors.white),
+                const SizedBox(width: 5),
+                GestureDetector(
+                  onTap: sendMessage,
+                  child: const CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Color(0xFF00A884), // WhatsApp Green
+                    child: Icon(
+                      Icons.send,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ),
               ],
