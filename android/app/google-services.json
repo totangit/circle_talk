@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "503627841048",
+    "project_id": "circletalk-9fa36",
+    "storage_bucket": "circletalk-9fa36.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:503627841048:android:e1f11639c501ca8499cd6d",
+        "android_client_info": {
+          "package_name": "com.example.circle_talk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyACrMl9ISoff8MRyWPRQXmc9k4nEUR9S_8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
