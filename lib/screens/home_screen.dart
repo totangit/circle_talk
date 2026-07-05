@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:intl/intl.dart'; 
 
 import 'package:zego_uikit_prebuilt_call/zego_uikit_prebuilt_call.dart';
 import 'package:zego_uikit_signaling_plugin/zego_uikit_signaling_plugin.dart';
@@ -22,6 +23,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   
   bool selectionMode = false;
   Set<String> selectedContacts = {};
+
+  // সার্চ ফিচারের জন্য ভ্যারিয়েবলসমূহ
+  bool isSearching = false;
+  String searchQuery = "";
+  final TextEditingController _searchController = TextEditingController();
+
+  static const Color appGreen = Colors.green;
 
   void initZegoCloud() {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -106,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           content: TextField(
             controller: nameController,
             decoration: const InputDecoration(
-              hintText: "Enter a name (e.g. Rahul)",
+              hintText: "Enter name (e.g. Totan)",
             ),
           ),
           actions: [
@@ -133,6 +141,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   'savedName': savedName,
                   'photoUrl': user['photoUrl'],
                   'addedAt': FieldValue.serverTimestamp(),
+                  'lastMessageTime': FieldValue.serverTimestamp(), // ইনিশিয়াল পজিশনের জন্য যুক্ত করা হলো
                 });
 
                 if (!mounted) return;
@@ -327,6 +336,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _searchController.dispose();
     setOnline(false);
     super.dispose();
   }
@@ -346,9 +356,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
+      backgroundColor: Colors.white, 
       appBar: selectionMode 
         ? AppBar(
-            backgroundColor: Colors.green,
+            backgroundColor: appGreen, 
+            elevation: 1,
             leading: IconButton(
               icon: const Icon(Icons.close, color: Colors.white),
               onPressed: () {
@@ -358,11 +370,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 });
               },
             ),
-            title: Text("${selectedContacts.length} selected", style: const TextStyle(color: Colors.white)),
-            // এখানে লিস্টের লজিকটা একদম ক্লিয়ার করে দেওয়া হলো
+            title: Text("${selectedContacts.length} selected", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
             actions: selectedContacts.length == 1
                 ? [
-                    // ১টা সিলেক্ট থাকলে Edit আইকন দেখাবে
                     IconButton(
                       icon: const Icon(Icons.edit, color: Colors.white),
                       onPressed: editSelectedContact,
@@ -375,7 +385,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ]
                 : [
-                    // একের বেশি সিলেক্ট থাকলে শুধু Delete আইকন দেখাবে
                     IconButton(
                       icon: const Icon(Icons.delete, color: Colors.white),
                       onPressed: deleteSelectedContacts,
@@ -384,35 +393,69 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ],
           )
         : AppBar(
-            title: const Text("Circle Talk", style: TextStyle(color: Colors.white)),
-            backgroundColor: Colors.green,
+            backgroundColor: appGreen, 
+            elevation: 1,
+            title: isSearching
+                ? TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
+                    cursorColor: Colors.white,
+                    decoration: const InputDecoration(
+                      hintText: "Search chat name...",
+                      hintStyle: TextStyle(color: Colors.white60),
+                      border: InputBorder.none,
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        searchQuery = value.trim().toLowerCase();
+                      });
+                    },
+                  )
+                : const Text("Circle Talk", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)),
             actions: [
               IconButton(
-                icon: const Icon(Icons.photo_camera, color: Colors.white),
-                onPressed: pickAndUploadImage,
-              ),
-              IconButton(
-                icon: const Icon(Icons.person_add, color: Colors.white),
+                icon: Icon(isSearching ? Icons.close : Icons.search, color: Colors.white),
                 onPressed: () {
-                  showAddUserDialog(context);
+                  setState(() {
+                    if (isSearching) {
+                      isSearching = false;
+                      searchQuery = "";
+                      _searchController.clear();
+                    } else {
+                      isSearching = true;
+                    }
+                  });
                 },
               ),
-              IconButton(
-                icon: const Icon(Icons.logout, color: Colors.white),
-                onPressed: () async {
-                  await setOnline(false);
-                  await ZegoUIKitPrebuiltCallInvitationService().uninit();
-                  await FirebaseAuth.instance.signOut();
+              if (!isSearching) ...[
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  onSelected: (value) async {
+                    if (value == 'logout') {
+                      await setOnline(false);
+                      await ZegoUIKitPrebuiltCallInvitationService().uninit();
+                      await FirebaseAuth.instance.signOut();
 
-                  if (context.mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  }
-                },
-              ),
+                      if (context.mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (route) => false,
+                        );
+                      }
+                    }
+                  },
+                  itemBuilder: (BuildContext context) {
+                    return [
+                      const PopupMenuItem<String>(
+                        value: 'logout',
+                        child: Text('Log out'),
+                      ),
+                    ];
+                  },
+                ),
+              ]
             ],
           ),
       body: StreamBuilder<QuerySnapshot>(
@@ -420,7 +463,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             .collection('users')
             .doc(currentUser!.uid)
             .collection('contacts')
-            .orderBy('addedAt', descending: true)
+            .orderBy('lastMessageTime', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -428,22 +471,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
 
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(color: appGreen));
           }
 
-          final contacts = snapshot.data!.docs;
+          final allContacts = snapshot.data!.docs;
+          final contacts = allContacts.where((doc) {
+            final user = doc.data() as Map<String, dynamic>;
+            final displayName = (user['savedName'] ?? user['email'] ?? 'Unknown').toString().toLowerCase();
+            return displayName.contains(searchQuery);
+          }).toList();
 
           if (contacts.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
-                "No contacts yet.\nTap + to add someone.",
+                isSearching ? "No matching contacts found" : "No contacts yet.\nTap + to add someone.",
                 textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey, fontSize: 16),
               ),
             );
           }
 
           return ListView.builder(
             itemCount: contacts.length,
+            padding: const EdgeInsets.symmetric(vertical: 4),
             itemBuilder: (context, index) {
               final user = contacts[index].data() as Map<String, dynamic>;
               
@@ -452,32 +502,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               final isSelected = selectedContacts.contains(user['uid']);
 
               return Container(
-                color: isSelected ? Colors.green.withOpacity(0.3) : Colors.transparent,
+                color: isSelected ? Colors.grey.withOpacity(0.15) : Colors.transparent,
                 child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
                   leading: Stack(
                     children: [
                       CircleAvatar(
+                        radius: 26, 
+                        backgroundColor: Colors.grey.shade300,
                         backgroundImage: user['photoUrl'] != null
                             ? NetworkImage(user['photoUrl'])
                             : null,
                         child: user['photoUrl'] == null
-                            ? Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : '?')
+                            ? Text(
+                                displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.white),
+                              )
                             : null,
                       ),
                       if (isSelected)
-                        const Positioned(
+                        Positioned(
                           bottom: 0,
                           right: 0,
                           child: CircleAvatar(
                             radius: 10,
-                            backgroundColor: Colors.green,
-                            child: Icon(Icons.check, size: 14, color: Colors.white),
+                            backgroundColor: appGreen,
+                            child: const Icon(Icons.check, size: 14, color: Colors.white),
                           ),
                         ),
                     ],
                   ),
-                  title: Text(displayName),
+                  title: Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Text(
+                      displayName,
+                      style: const TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
                   
+                  // --- সাবটাইটেল সেকশনে ফটো/ফাইল হ্যান্ডলিং ফিক্স করা হলো ---
                   subtitle: StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
                         .collection('chats')
@@ -489,10 +556,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     builder: (context, chatSnapshot) {
                       if (!chatSnapshot.hasData ||
                           chatSnapshot.data!.docs.isEmpty) {
-                        return const Text("No messages yet");
+                        return const Text("No messages yet", style: TextStyle(fontSize: 14));
                       }
 
                       String lastMessageText = "No messages yet";
+                      bool isMyLastMessage = false;
+                      bool lastMessageSeen = false;
+                      bool lastMessageDelivered = false;
 
                       for (var doc in chatSnapshot.data!.docs) {
                         final messageData = doc.data() as Map<String, dynamic>;
@@ -502,23 +572,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         );
 
                         if (!deletedFor.contains(currentUser.uid)) {
-                          lastMessageText = messageData['text'] ?? '';
+                          // --- এখানে নতুন কন্ডিশন যোগ করা হলো মিডিয়া ফাইল চেনার জন্য ---
+                          if (messageData['deleted'] == true) {
+                            lastMessageText = "This message was deleted";
+                          } else if (messageData['type'] == 'image') {
+                            lastMessageText = "📷 Photo";
+                          } else if (messageData['type'] == 'file') {
+                            lastMessageText = "📄 ${messageData['fileName'] ?? 'Document'}";
+                          } else {
+                            lastMessageText = messageData['text'] ?? '';
+                          }
+                          
+                          isMyLastMessage = messageData['senderId'] == currentUser.uid;
+                          lastMessageSeen = messageData['seen'] ?? false;
+                          lastMessageDelivered = messageData['delivered'] ?? false;
                           break;
                         }
                       }
 
-                      return Text(
-                        lastMessageText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontStyle: lastMessageText == "This message was deleted"
-                              ? FontStyle.italic
-                              : FontStyle.normal,
-                          color: lastMessageText == "This message was deleted"
-                              ? Colors.grey
-                              : Colors.black54,
-                        ),
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isMyLastMessage && lastMessageText != "No messages yet") ...[
+                            Icon(
+                              lastMessageSeen
+                                  ? Icons.done_all
+                                  : lastMessageDelivered
+                                      ? Icons.done_all
+                                      : Icons.done,
+                              size: 16,
+                              color: lastMessageSeen ? Colors.blue : Colors.grey,
+                            ),
+                            const SizedBox(width: 4), 
+                          ],
+                          Expanded(
+                            child: Text(
+                              lastMessageText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontStyle: lastMessageText == "This message was deleted"
+                                    ? FontStyle.italic
+                                    : FontStyle.normal,
+                                color: lastMessageText == "This message was deleted"
+                                    ? Colors.grey
+                                    : Colors.black54,
+                              ),
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -528,27 +631,57 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         .collection('chats')
                         .doc(chatId)
                         .collection('messages')
-                        .where('senderId', isEqualTo: user['uid'])
-                        .where('seen', isEqualTo: false)
+                        .orderBy('timestamp', descending: true)
                         .snapshots(),
-                    builder: (context, unreadSnapshot) {
-                      if (!unreadSnapshot.hasData ||
-                          unreadSnapshot.data!.docs.isEmpty) {
+                    builder: (context, msgSnapshot) {
+                      if (!msgSnapshot.hasData || msgSnapshot.data!.docs.isEmpty) {
                         return const SizedBox();
                       }
 
-                      final unread = unreadSnapshot.data!.docs.length;
+                      final allMessages = msgSnapshot.data!.docs;
+                      
+                      final unreadDocs = allMessages.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return data['senderId'] == user['uid'] && data['seen'] == false;
+                      }).toList();
 
-                      return CircleAvatar(
-                        radius: 12,
-                        backgroundColor: Colors.green,
-                        child: Text(
-                          unread.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
+                      final unread = unreadDocs.length;
+
+                      String timeText = "";
+                      final lastMsgData = allMessages.first.data() as Map<String, dynamic>;
+                      final Timestamp? timestamp = lastMsgData['timestamp'] as Timestamp?;
+                      if (timestamp != null) {
+                        timeText = DateFormat('hh:mm a').format(timestamp.toDate());
+                      }
+
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            timeText,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: unread > 0 ? appGreen : Colors.grey,
+                              fontWeight: unread > 0 ? FontWeight.bold : FontWeight.normal,
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 6),
+                          unread > 0
+                              ? CircleAvatar(
+                                  radius: 10,
+                                  backgroundColor: appGreen,
+                                  child: Text(
+                                    unread.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox(width: 20, height: 20),
+                        ],
                       );
                     },
                   ),
@@ -590,6 +723,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         },
       ),
+      floatingActionButton: selectionMode 
+          ? null 
+          : FloatingActionButton(
+              onPressed: () {
+                showAddUserDialog(context);
+              },
+              backgroundColor: appGreen,
+              child: const Icon(Icons.person_add, color: Colors.white),
+            ),
     );
   }
 }
